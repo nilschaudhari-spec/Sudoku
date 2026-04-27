@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f0c1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sudoku Master">
+<meta name="application-name" content="Sudoku Master">
+<meta name="description" content="A beautiful Sudoku game for Android">
+<title>Sudoku Master</title>
+
+<!-- PWA Manifest inline -->
+<script>
+const manifest = {
+  name: "Sudoku Master",
+  short_name: "Sudoku",
+  description: "A beautiful Sudoku puzzle game",
+  start_url: ".",
+  display: "standalone",
+  background_color: "#0f0c1a",
+  theme_color: "#0f0c1a",
+  orientation: "portrait",
+  icons: [
+    { src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%230f0c1a'/%3E%3Ctext x='96' y='128' text-anchor='middle' font-size='120' font-family='serif'%3E🔢%3C/text%3E%3C/svg%3E", sizes: "192x192", type: "image/svg+xml" },
+    { src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='80' fill='%230f0c1a'/%3E%3Ctext x='256' y='340' text-anchor='middle' font-size='320' font-family='serif'%3E🔢%3C/text%3E%3C/svg%3E", sizes: "512x512", type: "image/svg+xml" }
+  ]
+};
+const blob = new Blob([JSON.stringify(manifest)], {type:'application/json'});
+const url = URL.createObjectURL(blob);
+const link = document.createElement('link');
+link.rel = 'manifest'; link.href = url;
+document.head.appendChild(link);
+</script>
+
+<style>
+  :root {
+    --bg: #0f0c1a;
+    --bg2: #1a1228;
+    --accent: #7c4dff;
+    --accent2: #f0c060;
+    --text: #e8d5a3;
+    --muted: #705880;
+    --error: #ff5f5f;
+    --given: #e8d5a3;
+    --user: #a78bfa;
+    --cell-bg: #110e20;
+    --cell-hl: rgba(255,255,255,0.055);
+    --cell-sel: rgba(124,77,255,0.32);
+    --cell-same: rgba(240,192,96,0.13);
+    --box-border: rgba(124,77,255,0.55);
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bot: env(safe-area-inset-bottom, 0px);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    height: 100%; width: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: 'Georgia', 'Times New Roman', serif;
+    color: var(--text);
+    touch-action: manipulation;
+  }
+
+  #app {
+    height: 100dvh;
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bot);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Ambient glow */
+  #app::before, #app::after {
+    content: '';
+    position: fixed;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 0;
+  }
+  #app::before {
+    top: -25%; left: -15%;
+    width: 70vw; height: 70vw;
+    background: radial-gradient(circle, rgba(120,80,200,0.08) 0%, transparent 70%);
+  }
+  #app::after {
+    bottom: -20%; right: -15%;
+    width: 60vw; height: 60vw;
+    background: radial-gradient(circle, rgba(40,160,140,0.07) 0%, transparent 70%);
+  }
+
+  #wrap {
+    position: relative; z-index: 1;
+    width: 100%;
+    max-width: 440px;
+    padding: 0 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Title */
+  .title { text-align: center; line-height: 1; }
+  .title h1 { font-size: clamp(22px, 6vw, 32px); letter-spacing: 5px; color: var(--accent2); text-shadow: 0 0 24px rgba(240,192,96,0.35); }
+  .title small { font-size: 10px; letter-spacing: 8px; color: var(--accent); display: block; margin-top: -2px; }
+
+  /* Difficulty tabs */
+  .diff-row { display: flex; gap: 5px; }
+  .diff-btn {
+    flex: 1; padding: 5px 0; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08);
+    background: transparent; color: var(--muted); font-size: 10px; letter-spacing: 1.2px;
+    cursor: pointer; font-family: inherit; text-transform: uppercase; transition: all .2s;
+  }
+  .diff-btn.active { border-color: var(--accent); background: rgba(124,77,255,.22); color: #c8a8ff; }
+
+  /* Stats bar */
+  .stats {
+    width: 100%; display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 14px; background: rgba(255,255,255,0.03);
+    border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);
+    font-size: 12px; color: var(--muted);
+  }
+  .stats span { color: var(--text); font-variant-numeric: tabular-nums; }
+  .stats span.err { color: var(--error); }
+  .stats span.note-on { color: var(--accent); }
+
+  /* Board */
+  #board {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    width: 100%;
+    aspect-ratio: 1;
+    background: var(--box-border);
+    gap: 1.5px;
+    padding: 2px;
+    border-radius: 10px;
+    box-shadow: 0 6px 32px rgba(0,0,0,.55), 0 0 0 1px rgba(124,77,255,.18);
+  }
+
+  .cell {
+    background: var(--cell-bg);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; position: relative; transition: background .1s;
+    font-size: clamp(13px, 3.8vw, 22px);
+    user-select: none; -webkit-user-select: none;
+  }
+  .cell.hl   { background: var(--cell-hl); }
+  .cell.sel  { background: var(--cell-sel); }
+  .cell.same { background: var(--cell-same); }
+  .cell.sel::after {
+    content: ''; position: absolute; inset: 0;
+    box-shadow: inset 0 0 0 2px var(--accent);
+    pointer-events: none;
+  }
+
+  /* thick box borders */
+  .cell.rb { border-right: 2px solid var(--box-border) !important; }
+  .cell.bb { border-bottom: 2px solid var(--box-border) !important; }
+
+  /* Corner radii */
+  .cell:nth-child(1)  { border-radius: 8px 0 0 0; }
+  .cell:nth-child(9)  { border-radius: 0 8px 0 0; }
+  .cell:nth-child(73) { border-radius: 0 0 0 8px; }
+  .cell:nth-child(81) { border-radius: 0 0 8px 0; }
+
+  .cell-val { font-weight: bold; }
+  .cell-val.given { color: var(--given); }
+  .cell-val.user  { color: var(--user); font-weight: normal; }
+  .cell-val.err   { color: var(--error); }
+
+  .notes-grid {
+    display: grid; grid-template-columns: repeat(3,1fr);
+    width: 92%; height: 92%;
+  }
+  .note-n {
+    display: flex; align-items: center; justify-content: center;
+    font-size: clamp(5px, 1.3vw, 8px); color: transparent; transition: color .1s;
+  }
+  .note-n.on { color: var(--accent); }
+
+  /* Numpad */
+  .numpad { display: flex; gap: 5px; width: 100%; }
+  .num-btn {
+    flex: 1; aspect-ratio: 1; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.09);
+    background: rgba(255,255,255,0.04);
+    color: var(--text); font-size: clamp(16px, 4.5vw, 24px);
+    font-weight: bold; cursor: pointer; font-family: inherit;
+    transition: all .1s; position: relative;
+  }
+  .num-btn.done { color: rgba(255,255,255,0.15); pointer-events: none; }
+  .num-btn.active-val { box-shadow: 0 0 0 2px var(--accent); }
+  .num-btn:active { transform: scale(.92); background: rgba(124,77,255,.2); }
+
+  /* Controls */
+  .controls { display: flex; gap: 6px; width: 100%; }
+  .ctrl-btn {
+    flex: 1; padding: 9px 0; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.09);
+    background: rgba(255,255,255,0.04);
+    color: var(--muted); font-size: 11px; cursor: pointer;
+    font-family: inherit; letter-spacing: .4px; transition: all .15s;
+  }
+  .ctrl-btn.note-active {
+    background: rgba(124,77,255,.28);
+    border-color: rgba(124,77,255,.65);
+    color: #c8a8ff;
+  }
+  .ctrl-btn:active { transform: scale(.94); }
+
+  /* New game */
+  #new-game-btn {
+    width: 100%; padding: 11px; border-radius: 10px;
+    border: 1px solid rgba(240,192,96,.28);
+    background: rgba(240,192,96,.07); color: var(--accent2);
+    font-size: 13px; cursor: pointer; font-family: inherit;
+    letter-spacing: 2px; text-transform: uppercase; transition: all .2s;
+  }
+  #new-game-btn:active { background: rgba(240,192,96,.15); }
+
+  /* Overlay */
+  #overlay {
+    display: none; position: fixed; inset: 0; z-index: 50;
+    background: rgba(0,0,0,.88);
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px;
+  }
+  #overlay.show { display: flex; }
+  #overlay .trophy { font-size: 64px; animation: pop .4s ease; }
+  #overlay h2 { font-size: 38px; color: var(--accent2); letter-spacing: 2px; }
+  #overlay p { color: var(--muted); font-size: 16px; }
+  #overlay button {
+    margin-top: 16px; padding: 12px 36px; border-radius: 30px;
+    border: none; background: var(--accent); color: #fff;
+    font-size: 16px; cursor: pointer; font-family: inherit; letter-spacing: 2px;
+  }
+
+  /* Install banner */
+  #install-banner {
+    display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
+    background: rgba(15,12,26,.97); border-top: 1px solid rgba(124,77,255,.3);
+    padding: 12px 16px calc(12px + var(--safe-bot));
+    flex-direction: column; gap: 8px;
+  }
+  #install-banner.show { display: flex; }
+  #install-banner p { color: var(--text); font-size: 13px; }
+  #install-banner small { color: var(--muted); font-size: 11px; }
+  .banner-btns { display: flex; gap: 8px; }
+  .banner-btns button {
+    flex: 1; padding: 8px; border-radius: 8px; border: none;
+    font-family: inherit; cursor: pointer; font-size: 13px;
+  }
+  .banner-btns .install { background: var(--accent); color: #fff; }
+  .banner-btns .dismiss { background: rgba(255,255,255,.07); color: var(--muted); }
+
+  @keyframes pop { 0%{transform:scale(0)} 70%{transform:scale(1.15)} 100%{transform:scale(1)} }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="wrap">
+    <div class="title">
+      <h1>SUDOKU</h1>
+      <small>MASTER</small>
+    </div>
+
+    <div class="diff-row" id="diff-row"></div>
+
+    <div class="stats">
+      <div>⏱ <span id="timer">00:00</span></div>
+      <div>❌ <span id="mistakes">0</span> mistakes</div>
+      <div>✏️ <span id="note-stat">OFF</span></div>
+    </div>
+
+    <div id="board"></div>
+    <div class="numpad" id="numpad"></div>
+    <div class="controls" id="controls"></div>
+    <button id="new-game-btn">New Game</button>
+  </div>
+</div>
+
+<div id="overlay">
+  <div class="trophy">🏆</div>
+  <h2>Solved!</h2>
+  <p id="solve-stats"></p>
+  <button id="play-again-btn">Play Again</button>
+</div>
+
+<div id="install-banner">
+  <p>📲 Install Sudoku Master on your phone</p>
+  <small>Tap "Add to Home Screen" for an app-like experience</small>
+  <div class="banner-btns">
+    <button class="install" id="install-btn">Install App</button>
+    <button class="dismiss" id="dismiss-btn">Not Now</button>
+  </div>
+</div>
+
+<script>
+// ── Utilities ────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length-1; i>0; i--) { const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+  return a;
+}
+
+// ── Sudoku Logic ─────────────────────────────────────────────────────────────
+function isValid(b, r, c, n) {
+  for (let i=0;i<9;i++) { if(b[r][i]===n||b[i][c]===n) return false; }
+  const br=Math.floor(r/3)*3, bc=Math.floor(c/3)*3;
+  for (let rr=br;rr<br+3;rr++) for (let cc=bc;cc<bc+3;cc++) if(b[rr][cc]===n) return false;
+  return true;
+}
+function solve(b) {
+  for (let r=0;r<9;r++) for (let c=0;c<9;c++) if(b[r][c]===0) {
+    for (const n of shuffle([1,2,3,4,5,6,7,8,9])) {
+      if(isValid(b,r,c,n)) { b[r][c]=n; if(solve(b)) return true; b[r][c]=0; }
+    }
+    return false;
+  }
+  return true;
+}
+function generatePuzzle(diff) {
+  const full = Array.from({length:9},()=>Array(9).fill(0));
+  solve(full);
+  const solution = full.map(r=>[...r]);
+  const removals = {easy:36,medium:46,hard:54,expert:62}[diff]||46;
+  const puzzle = full.map(r=>[...r]);
+  let removed = 0;
+  for (const idx of shuffle([...Array(81).keys()])) {
+    if(removed>=removals) break;
+    puzzle[Math.floor(idx/9)][idx%9]=0; removed++;
+  }
+  return {puzzle, solution};
+}
+
+// ── State ────────────────────────────────────────────────────────────────────
+const DIFFS = ['easy','medium','hard','expert'];
+let diff='medium', board, solution, given, notes, selected=null, noteMode=false;
+let errors=new Set(), time=0, timerID=null, running=false, solved=false, mistakes=0, history=[];
+
+// ── Timer ────────────────────────────────────────────────────────────────────
+function fmtTime(s) { return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; }
+function startTimer() { clearInterval(timerID); timerID=setInterval(()=>{ if(running&&!solved){time++;$('timer').textContent=fmtTime(time);} },1000); }
+
+// ── Game Init ────────────────────────────────────────────────────────────────
+function newGame(d=diff) {
+  diff=d; clearInterval(timerID);
+  const g = generatePuzzle(d);
+  board = g.puzzle.map(r=>[...r]);
+  solution = g.solution;
+  given = g.puzzle.map(r=>r.map(v=>v!==0));
+  notes = Array.from({length:9},()=>Array.from({length:9},()=>new Set()));
+  selected=null; errors=new Set(); time=0; running=true; solved=false; mistakes=0; history=[];
+  noteMode=false;
+  $('overlay').classList.remove('show');
+  updateDiffBtns(); renderBoard(); renderNumpad(); updateStats(); startTimer();
+}
+
+// ── Board Rendering ──────────────────────────────────────────────────────────
+function renderBoard() {
+  const el = $('board'); el.innerHTML='';
+  for (let r=0;r<9;r++) for (let c=0;c<9;c++) {
+    const cell = document.createElement('div');
+    cell.className='cell';
+    cell.dataset.r=r; cell.dataset.c=c;
+    if((c+1)%3===0&&c!==8) cell.classList.add('rb');
+    if((r+1)%3===0&&r!==8) cell.classList.add('bb');
+    cell.addEventListener('pointerdown', e=>{ e.preventDefault(); selectCell(r,c); });
+    el.appendChild(cell);
+  }
+  refreshBoard();
+}
+
+function getCellEl(r,c) { return $('board').children[r*9+c]; }
+
+function refreshBoard() {
+  // compute highlights
+  const hl=new Set(), same=new Set();
+  if(selected) {
+    const [sr,sc]=selected, sv=board[sr][sc];
+    for(let i=0;i<9;i++){hl.add(`${sr}-${i}`);hl.add(`${i}-${sc}`);}
+    const br=Math.floor(sr/3)*3,bc=Math.floor(sc/3)*3;
+    for(let rr=br;rr<br+3;rr++) for(let cc=bc;cc<bc+3;cc++) hl.add(`${rr}-${cc}`);
+    if(sv) for(let r=0;r<9;r++) for(let c=0;c<9;c++) if(board[r][c]===sv) same.add(`${r}-${c}`);
+  }
+
+  for(let r=0;r<9;r++) for(let c=0;c<9;c++) {
+    const cell=getCellEl(r,c), key=`${r}-${c}`;
+    const isSel=selected&&selected[0]===r&&selected[1]===c;
+    cell.classList.toggle('sel',!!isSel);
+    cell.classList.toggle('same',!isSel&&same.has(key));
+    cell.classList.toggle('hl',!isSel&&!same.has(key)&&hl.has(key));
+    cell.innerHTML='';
+    const val=board[r][c];
+    if(val) {
+      const span=document.createElement('span');
+      span.className='cell-val '+(given[r][c]?'given':errors.has(key)?'err':'user');
+      span.textContent=val; cell.appendChild(span);
+    } else if(notes[r][c].size) {
+      const ng=document.createElement('div'); ng.className='notes-grid';
+      for(let n=1;n<=9;n++){const d=document.createElement('div');d.className='note-n'+(notes[r][c].has(n)?' on':'');d.textContent=n;ng.appendChild(d);}
+      cell.appendChild(ng);
+    }
+  }
+}
+
+// ── Numpad ───────────────────────────────────────────────────────────────────
+function renderNumpad() {
+  const el=$('numpad'); el.innerHTML='';
+  for(let n=1;n<=9;n++){
+    const btn=document.createElement('button');
+    btn.className='num-btn'; btn.textContent=n; btn.dataset.n=n;
+    btn.addEventListener('pointerdown',e=>{e.preventDefault();inputNum(n);});
+    el.appendChild(btn);
+  }
+}
+function refreshNumpad() {
+  const selVal=selected?board[selected[0]][selected[1]]:0;
+  $('numpad').querySelectorAll('.num-btn').forEach(btn=>{
+    const n=+btn.dataset.n;
+    const count=board.flat().filter(v=>v===n).length;
+    btn.classList.toggle('done',count===9);
+    btn.classList.toggle('active-val',selVal===n&&selVal!==0);
+  });
+}
+
+// ── Controls ─────────────────────────────────────────────────────────────────
+function buildControls() {
+  const el=$('controls'); el.innerHTML='';
+  const btns=[
+    {id:'undo-btn',label:'↩ Undo',fn:undo},
+    {id:'note-btn',label:'✏️ Notes',fn:()=>{noteMode=!noteMode;updateStats();buildControls();}},
+    {id:'hint-btn',label:'💡 Hint',fn:hint},
+    {id:'clear-btn',label:'⌫ Clear',fn:()=>inputNum(0)},
+  ];
+  btns.forEach(({id,label,fn})=>{
+    const b=document.createElement('button');
+    b.className='ctrl-btn'+(id==='note-btn'&&noteMode?' note-active':'');
+    b.textContent=label; b.id=id;
+    b.addEventListener('pointerdown',e=>{e.preventDefault();fn();});
+    el.appendChild(b);
+  });
+}
+
+// ── Stats ────────────────────────────────────────────────────────────────────
+function updateStats() {
+  $('mistakes').textContent=mistakes;
+  $('mistakes').className=mistakes>0?'err':'';
+  $('note-stat').textContent=noteMode?'ON':'OFF';
+  $('note-stat').className=noteMode?'note-on':'';
+}
+
+// ── Difficulty Buttons ───────────────────────────────────────────────────────
+function updateDiffBtns() {
+  $('diff-row').querySelectorAll('.diff-btn').forEach(b=>b.classList.toggle('active',b.dataset.d===diff));
+}
+function buildDiffRow() {
+  DIFFS.forEach(d=>{
+    const b=document.createElement('button');
+    b.className='diff-btn'+(d===diff?' active':'');
+    b.dataset.d=d; b.textContent=d;
+    b.addEventListener('pointerdown',e=>{e.preventDefault();newGame(d);});
+    $('diff-row').appendChild(b);
+  });
+}
+
+// ── Selection ────────────────────────────────────────────────────────────────
+function selectCell(r,c) { selected=[r,c]; refreshBoard(); refreshNumpad(); }
+
+// ── Input ────────────────────────────────────────────────────────────────────
+function saveHistory() {
+  history.push({board:board.map(r=>[...r]),notes:notes.map(r=>r.map(s=>new Set(s))),errors:new Set(errors)});
+}
+
+function inputNum(n) {
+  if(!selected||solved) return;
+  const [r,c]=selected;
+  if(given[r][c]) return;
+  saveHistory();
+  if(noteMode) {
+    if(n===0){notes[r][c]=new Set();}
+    else if(notes[r][c].has(n)){notes[r][c].delete(n);}
+    else{notes[r][c].add(n);}
+    refreshBoard(); return;
+  }
+  board[r][c]=n;
+  if(n!==0&&n!==solution[r][c]){errors.add(`${r}-${c}`);mistakes++;}
+  else{errors.delete(`${r}-${c}`);}
+  // clear notes
+  const nr=notes.map(row=>row.map(s=>new Set(s)));
+  if(n!==0&&n===solution[r][c]){
+    for(let i=0;i<9;i++){nr[r][i].delete(n);nr[i][c].delete(n);}
+    const br=Math.floor(r/3)*3,bc=Math.floor(c/3)*3;
+    for(let rr=br;rr<br+3;rr++) for(let cc=bc;cc<bc+3;cc++) nr[rr][cc].delete(n);
+  }
+  nr[r][c]=new Set(); notes=nr;
+  updateStats(); refreshBoard(); refreshNumpad();
+  if(checkSolved()) winGame();
+}
+
+function checkSolved() {
+  for(let r=0;r<9;r++) for(let c=0;c<9;c++) if(board[r][c]!==solution[r][c]) return false;
+  return true;
+}
+
+function winGame() {
+  solved=true; running=false; clearInterval(timerID);
+  setTimeout(()=>{
+    $('solve-stats').textContent=`${diff.toUpperCase()} · ${fmtTime(time)} · ${mistakes} mistake${mistakes!==1?'s':''}`;
+    $('overlay').classList.add('show');
+  },400);
+}
+
+function undo() {
+  if(!history.length) return;
+  const p=history.pop();
+  board=p.board; notes=p.notes; errors=p.errors;
+  updateStats(); refreshBoard(); refreshNumpad();
+}
+
+function hint() {
+  if(solved) return;
+  const empty=[];
+  for(let r=0;r<9;r++) for(let c=0;c<9;c++) if(!given[r][c]&&board[r][c]===0) empty.push([r,c]);
+  if(!empty.length) return;
+  saveHistory();
+  const [r,c]=empty[Math.floor(Math.random()*empty.length)];
+  board[r][c]=solution[r][c]; errors.delete(`${r}-${c}`);
+  notes[r][c]=new Set(); selected=[r,c];
+  updateStats(); refreshBoard(); refreshNumpad();
+  if(checkSolved()) winGame();
+}
+
+// ── Keyboard (for desktop testing) ──────────────────────────────────────────
+document.addEventListener('keydown',e=>{
+  if(!selected) return;
+  if(e.key>='1'&&e.key<='9'){inputNum(+e.key);return;}
+  if(e.key==='0'||e.key==='Backspace'||e.key==='Delete'){inputNum(0);return;}
+  if(e.key==='n'||e.key==='N'){noteMode=!noteMode;updateStats();buildControls();return;}
+  const [r,c]=selected;
+  if(e.key==='ArrowUp'&&r>0)selectCell(r-1,c);
+  if(e.key==='ArrowDown'&&r<8)selectCell(r+1,c);
+  if(e.key==='ArrowLeft'&&c>0)selectCell(r,c-1);
+  if(e.key==='ArrowRight'&&c<8)selectCell(r,c+1);
+});
+
+// ── PWA Install ──────────────────────────────────────────────────────────────
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault(); deferredPrompt=e;
+  if(!localStorage.getItem('installDismissed')) {
+    setTimeout(()=>$('install-banner').classList.add('show'),3000);
+  }
+});
+$('install-btn').addEventListener('click',async()=>{
+  $('install-banner').classList.remove('show');
+  if(deferredPrompt){await deferredPrompt.prompt();deferredPrompt=null;}
+  else {
+    alert('To install:\n\nChrome: tap ⋮ menu → "Add to Home screen"\nSafari: tap Share → "Add to Home Screen"');
+  }
+});
+$('dismiss-btn').addEventListener('click',()=>{
+  $('install-banner').classList.remove('show');
+  localStorage.setItem('installDismissed','1');
+});
+$('play-again-btn').addEventListener('click',()=>newGame());
+$('new-game-btn').addEventListener('click',()=>newGame());
+
+// ── Service Worker ───────────────────────────────────────────────────────────
+if('serviceWorker' in navigator) {
+  const swCode=`
+const CACHE='sudoku-v1';
+const ASSETS=['/'];
+self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));
+self.addEventListener('fetch',e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));
+`;
+  const swBlob=new Blob([swCode],{type:'application/javascript'});
+  navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(()=>{});
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+buildDiffRow();
+buildControls();
+$('new-game-btn').addEventListener('click',()=>newGame()); // re-bind after build
+newGame();
+</script>
+</body>
+</html>
